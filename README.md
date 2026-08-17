@@ -4,7 +4,7 @@ Real-time log analytics dashboard built with Elasticsearch, Node.js, TypeScript,
 
 **Live demo:** https://logpulse-nine.vercel.app
 **API:** https://logpulse-api-8ch9.onrender.com
-**Login:** `admin` / (password shared on request — this is a single-operator internal tool, see Design decisions below)
+**Login:** `admin` / `Demo@LogPulse1`
 
 > Note: the backend runs on Render's free tier and spins down after inactivity. The first request after idle time may take 30–50 seconds to wake up.
 
