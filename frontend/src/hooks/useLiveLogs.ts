@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LogEntry } from '../api/client';
 
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:4000/ws/logs';
+
 export function useLiveLogs(maxItems = 50) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:4000/ws/logs');
+    const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
 
     ws.onopen = () => setConnected(true);
