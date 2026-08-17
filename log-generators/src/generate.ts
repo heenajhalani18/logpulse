@@ -1,3 +1,4 @@
+import express from 'express';
 import dotenv from 'dotenv';
 import { Client } from '@opensearch-project/opensearch';
 
@@ -8,7 +9,6 @@ const esClient = new Client({
 });
 
 const services = ['auth-service', 'payments-service', 'api-gateway'];
-const levels = ['info', 'warn', 'error'];
 
 const messagesByLevel: Record<string, string[]> = {
   info: [
@@ -41,6 +41,9 @@ function weightedLevel(): string {
   return 'error';
 }
 
+let totalIndexed = 0;
+let lastRunAt = new Date().toISOString();
+
 async function generateBatch(count: number) {
   const body: any[] = [];
 
@@ -62,15 +65,30 @@ async function generateBatch(count: number) {
   if (result.body.errors) {
     console.error('Some documents failed to index');
   } else {
-    console.log(`Indexed ${count} log documents`);
+    totalIndexed += count;
+    lastRunAt = new Date().toISOString();
+    console.log(`Indexed ${count} log documents (total: ${totalIndexed})`);
   }
 }
 
-async function run() {
-  console.log('Starting log generator — indexing a log batch every 3 seconds. Ctrl+C to stop.');
-  setInterval(() => {
-    generateBatch(5).catch(console.error);
-  }, 3000);
-}
+// Keep generating logs on a timer, independent of any HTTP traffic
+setInterval(() => {
+  generateBatch(5).catch(console.error);
+}, 3000);
 
-run();
+// Minimal HTTP server so Render's free Web Service tier accepts this process,
+// and so an external uptime pinger has something to hit to prevent spin-down
+const app = express();
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', totalIndexed, lastRunAt });
+});
+
+app.get('/', (req, res) => {
+  res.send('LogPulse log generator is running.');
+});
+
+const PORT = process.env.PORT || 4001;
+app.listen(PORT, () => {
+  console.log(`Log generator health server running on port ${PORT}`);
+});
