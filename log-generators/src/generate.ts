@@ -43,6 +43,10 @@ function weightedLevel(): string {
 
 let totalIndexed = 0;
 let lastRunAt = new Date().toISOString();
+let lastCleanupAt = new Date().toISOString();
+let lastCleanupDeleted = 0;
+
+const RETENTION_MINUTES = 30;
 
 async function generateBatch(count: number) {
   const body: any[] = [];
@@ -71,17 +75,47 @@ async function generateBatch(count: number) {
   }
 }
 
-// Keep generating logs on a timer, independent of any HTTP traffic
+// Keep the index bounded — delete anything older than RETENTION_MINUTES.
+// Without this, the index grows forever and eventually exceeds the free-tier quota,
+// which is exactly what happened before this fix.
+async function cleanupOldLogs() {
+  try {
+    const cutoff = new Date(Date.now() - RETENTION_MINUTES * 60 * 1000).toISOString();
+    const result = await esClient.deleteByQuery({
+      index: 'logs',
+      body: {
+        query: {
+          range: { timestamp: { lt: cutoff } },
+        },
+      },
+    });
+    lastCleanupAt = new Date().toISOString();
+    lastCleanupDeleted = result.body.deleted || 0;
+    if (lastCleanupDeleted > 0) {
+      console.log(`Cleanup: deleted ${lastCleanupDeleted} logs older than ${RETENTION_MINUTES}m`);
+    }
+  } catch (err) {
+    console.error('Cleanup error:', (err as Error).message);
+  }
+}
+
 setInterval(() => {
   generateBatch(5).catch(console.error);
 }, 3000);
 
-// Minimal HTTP server so Render's free Web Service tier accepts this process,
-// and so an external uptime pinger has something to hit to prevent spin-down
+// Run cleanup every 2 minutes — frequent enough to keep the index small,
+// infrequent enough not to add meaningful load
+setInterval(() => {
+  cleanupOldLogs();
+}, 2 * 60 * 1000);
+
+// Run one cleanup shortly after startup too, in case of leftover data
+setTimeout(() => cleanupOldLogs(), 10000);
+
 const app = express();
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', totalIndexed, lastRunAt });
+  res.json({ status: 'ok', totalIndexed, lastRunAt, lastCleanupAt, lastCleanupDeleted });
 });
 
 app.get('/', (req, res) => {

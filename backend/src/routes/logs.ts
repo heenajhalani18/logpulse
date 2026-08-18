@@ -52,11 +52,15 @@ export function createLogsRouter(esClient: Client) {
   router.get('/stats/error-rate', async (req, res) => {
     try {
       const { interval } = req.query;
+      const since = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
       const result = await esClient.search({
         index: 'logs',
         body: {
           size: 0,
+          query: {
+            range: { timestamp: { gte: since } },
+          },
           aggs: {
             logs_over_time: {
               date_histogram: {
@@ -81,12 +85,19 @@ export function createLogsRouter(esClient: Client) {
 
   router.get('/stats/top-errors', async (req, res) => {
     try {
+      const since = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+
       const result = await esClient.search({
         index: 'logs',
         body: {
           size: 0,
           query: {
-            term: { level: 'error' },
+            bool: {
+              filter: [
+                { term: { level: 'error' } },
+                { range: { timestamp: { gte: since } } },
+              ],
+            },
           },
           aggs: {
             by_service: {
