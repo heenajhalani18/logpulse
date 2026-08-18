@@ -7,26 +7,50 @@ export function useLiveLogs(maxItems = 50) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
+    let cancelled = false;
 
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => setConnected(false);
-    ws.onerror = () => setConnected(false);
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'log') {
-          setLogs((prev) => [msg.data, ...prev].slice(0, maxItems));
+    function connect() {
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (cancelled) return;
+        setConnected(true);
+      };
+
+      ws.onclose = () => {
+        if (cancelled) return;
+        setConnected(false);
+        // Retry after 3 seconds — handles Render free-tier services waking up or restarting
+        reconnectTimeout.current = setTimeout(connect, 3000);
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'log') {
+            setLogs((prev) => [msg.data, ...prev].slice(0, maxItems));
+          }
+        } catch {
+          // ignore malformed messages
         }
-      } catch {
-        // ignore malformed messages
-      }
-    };
+      };
+    }
 
-    return () => ws.close();
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
+      wsRef.current?.close();
+    };
   }, [maxItems]);
 
   return { logs, connected };
