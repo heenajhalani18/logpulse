@@ -44,6 +44,7 @@ React dashboard (Vercel)
 - **Single-operator auth, not multi-tenant.** There's no signup flow. This is deliberately scoped as an internal ops tool with one admin login, not a SaaS product — matching how real internal dashboards are usually built.
 - **Poll-and-push for the live tail**, not a persistent Elasticsearch subscription (Elasticsearch has no native push/subscribe). The backend polls for documents newer than the last check every 2 seconds and broadcasts over WebSocket.
 - **OpenSearch client, not the Elasticsearch client**, in production. The free-tier hosted cluster (Bonsai) runs OpenSearch, a fork of Elasticsearch with a compatible query DSL but a different official client library and slightly different response shape (`response.body` wrapping).
+- **Aggregation queries are time-bounded, not unbounded.** Both dashboard aggregation endpoints scope to the last 15 minutes via a `range` filter, and the log generator runs a periodic `deleteByQuery` to purge anything older than 30 minutes. This was a real bug I hit and fixed during deployment: with continuous log generation and no cleanup, the index grew past the free-tier document quota within a day, causing aggregation queries to fail outright. Bounding both the write side (retention) and the read side (query time window) fixed it and keeps the system stable indefinitely.
 
 ## Local development
 
